@@ -438,6 +438,11 @@ section[data-testid="stSidebar"] button[data-testid^="baseButton"],
     font-size: 14px !important;
     color: #111827 !important;
 }
+div[data-testid="stAlert"],
+div[data-testid="stAlert"] p,
+div[data-testid="stAlert"] * {
+    color: #111827 !important;
+}
 
 @media (max-width: 768px) {
     .hint-row   { flex-direction:column !important; gap:8px !important; }
