@@ -436,6 +436,7 @@ section[data-testid="stSidebar"] button[data-testid^="baseButton"],
 .stAlert {
     border-radius: 10px !important;
     font-size: 14px !important;
+    color: #111827 !important;
 }
 
 @media (max-width: 768px) {
