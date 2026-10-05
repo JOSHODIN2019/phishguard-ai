@@ -695,13 +695,9 @@ def load_resources():
     from nltk.corpus import stopwords
     from nltk.stem import PorterStemmer, WordNetLemmatizer
 
-    for corpus in ["stopwords", "punkt", "punkt_tab",
-                   "wordnet", "omw-1.4",
-                   "averaged_perceptron_tagger",
-                   "averaged_perceptron_tagger_eng"]:
-        nltk.download(corpus, quiet=True)
-
+    # Point NLTK to bundled data in repo — no network downloads at runtime
     base_dir = os.path.dirname(os.path.abspath(__file__))
+    nltk.data.path.insert(0, os.path.join(base_dir, "nltk_data"))
 
     with open(os.path.join(base_dir, "model.pkl"),  "rb") as f:
         model = pickle.load(f)
