@@ -3,6 +3,8 @@ import streamlit.components.v1 as components
 import pandas as pd
 import re
 import os
+import json
+import pickle
 from collections import Counter
 
 # ── PAGE CONFIG  (must be the very first Streamlit call) ────────────────────
@@ -686,18 +688,12 @@ HAMBURGER_HTML = """
 """
 
 
-# ── MODEL TRAINING  (cached — runs only once per session) ────────────────────
+# ── MODEL LOADING  (cached — loads pre-trained pickles, runs in ~1 second) ────
 @st.cache_resource(show_spinner=False)
 def load_resources():
     import nltk
     from nltk.corpus import stopwords
-    from nltk.tokenize import word_tokenize
     from nltk.stem import PorterStemmer, WordNetLemmatizer
-    from sklearn.feature_extraction.text import TfidfVectorizer
-    from sklearn.naive_bayes import MultinomialNB
-    from sklearn.model_selection import train_test_split
-    from sklearn.metrics import (accuracy_score, precision_score,
-                                  recall_score, f1_score)
 
     for corpus in ["stopwords", "punkt", "punkt_tab",
                    "wordnet", "omw-1.4",
@@ -705,95 +701,25 @@ def load_resources():
                    "averaged_perceptron_tagger_eng"]:
         nltk.download(corpus, quiet=True)
 
-    base_dir  = os.path.dirname(os.path.abspath(__file__))
-    data_path = os.path.join(base_dir, "ISAAC_DATASET.csv")
-    raw = pd.read_csv(data_path)
-    raw["email_text"] = raw["subject"].fillna("") + " " + raw["body"].fillna("")
-    df  = raw[["email_text", "label"]].copy()
+    base_dir = os.path.dirname(os.path.abspath(__file__))
 
-    total_raw    = len(df)
-    phishing_raw = int((df["label"] == 1).sum())
-    legit_raw    = int((df["label"] == 0).sum())
-
-    df = df.drop_duplicates(subset=["email_text"]).reset_index(drop=True)
-    df = df.dropna(subset=["email_text", "label"]).reset_index(drop=True)
-
-    def clean(text):
-        t = str(text)
-        t = re.sub(r"<[^>]+>",                   " ", t)
-        t = re.sub(r"https?://\S+|www\.\S+",     " ", t)
-        t = re.sub(r"\b[\w.+-]+@[\w.-]+\.\w+\b", " ", t)
-        t = re.sub(r"[^\w\s]",                    " ", t)
-        t = re.sub(r"\d+",                        " ", t)
-        t = re.sub(r"[^a-zA-Z\s]",               " ", t)
-        t = re.sub(r"\s+",                        " ", t).strip()
-        return t
-
-    df["email_text"] = df["email_text"].apply(clean)
-    df["email_text"] = df["email_text"].str.lower()
-
-    sw = set(stopwords.words("english"))
-    df["email_text"] = df["email_text"].apply(
-        lambda t: " ".join(w for w in t.split() if w not in sw))
-
-    all_w = " ".join(df["email_text"]).split()
-    freq  = Counter(all_w)
-    frequent_words = set(w for w, _ in freq.most_common(20))
-    df["email_text"] = df["email_text"].apply(
-        lambda t: " ".join(w for w in t.split() if w not in frequent_words))
-
-    all_w = " ".join(df["email_text"]).split()
-    freq  = Counter(all_w)
-    rare_words = set(w for w, c in freq.items() if c < 2)
-    df["email_text"] = df["email_text"].apply(
-        lambda t: " ".join(w for w in t.split() if w not in rare_words))
-
-    stemmer    = PorterStemmer()
-    lemmatizer = WordNetLemmatizer()
-
-    def full_process(text):
-        tokens = text.split()
-        tokens = [stemmer.stem(w)        for w in tokens]
-        tokens = [lemmatizer.lemmatize(w) for w in tokens]
-        return " ".join(tokens)
-
-    df["processed"] = df["email_text"].apply(full_process)
-
-    tfidf = TfidfVectorizer(max_features=5000)
-    X = tfidf.fit_transform(df["processed"])
-    y = df["label"]
-
-    X_tr, X_te, y_tr, y_te = train_test_split(
-        X, y, test_size=0.20, random_state=42, stratify=y)
-
-    model = MultinomialNB()
-    model.fit(X_tr, y_tr)
-    y_pred = model.predict(X_te)
-
-    metrics = {
-        "accuracy":  round(accuracy_score (y_te, y_pred) * 100, 2),
-        "precision": round(precision_score(y_te, y_pred) * 100, 2),
-        "recall":    round(recall_score   (y_te, y_pred) * 100, 2),
-        "f1":        round(f1_score       (y_te, y_pred) * 100, 2),
-    }
+    with open(os.path.join(base_dir, "model.pkl"),  "rb") as f:
+        model = pickle.load(f)
+    with open(os.path.join(base_dir, "tfidf.pkl"),  "rb") as f:
+        tfidf = pickle.load(f)
+    with open(os.path.join(base_dir, "meta.json"),  "r") as f:
+        meta = json.load(f)
 
     return {
         "model":          model,
         "vectorizer":     tfidf,
-        "stop_words":     sw,
-        "frequent_words": frequent_words,
-        "rare_words":     rare_words,
-        "stemmer":        stemmer,
-        "lemmatizer":     lemmatizer,
-        "metrics":        metrics,
-        "stats": {
-            "total":       total_raw,
-            "phishing":    phishing_raw,
-            "legitimate":  legit_raw,
-            "after_clean": len(df),
-            "train":       X_tr.shape[0],
-            "test":        X_te.shape[0],
-        },
+        "stop_words":     set(stopwords.words("english")),
+        "frequent_words": set(meta["frequent_words"]),
+        "rare_words":     set(meta["rare_words"]),
+        "stemmer":        PorterStemmer(),
+        "lemmatizer":     WordNetLemmatizer(),
+        "metrics":        meta["metrics"],
+        "stats":          meta["stats"],
     }
 
 
